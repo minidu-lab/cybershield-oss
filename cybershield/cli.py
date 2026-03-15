@@ -1,6 +1,9 @@
 """Command-line interface for CyberShield OSS.
 
 Provides `cybershield scan` and `cybershield tutor` commands.
+
+v0.2.0: Improved colored output, better error handling for API timeouts,
+tutor session info display, quiz command support.
 """
 
 from __future__ import annotations
@@ -31,6 +34,14 @@ SEVERITY_SYMBOLS = {
     "MEDIUM": click.style("●", fg="yellow"),
     "LOW": click.style("●", fg="green"),
     "INFO": click.style("●", fg="blue"),
+}
+
+SEVERITY_STYLES = {
+    "CRITICAL": {"fg": "red", "bold": True},
+    "HIGH": {"fg": "yellow", "bold": True},
+    "MEDIUM": {"fg": "yellow"},
+    "LOW": {"fg": "green"},
+    "INFO": {"fg": "blue"},
 }
 
 
@@ -98,14 +109,14 @@ def scan(
     try:
         target_url = validate_url(target_url)
     except ValueError as e:
-        click.echo(click.style(f"Error: {e}", fg="red"), err=True)
+        click.echo(click.style(f"  ✗ Error: {e}", fg="red"), err=True)
         sys.exit(1)
 
     module_list = [m.strip() for m in modules.split(",")]
     try:
         module_list = validate_modules(module_list)
     except ValueError as e:
-        click.echo(click.style(f"Error: {e}", fg="red"), err=True)
+        click.echo(click.style(f"  ✗ Error: {e}", fg="red"), err=True)
         sys.exit(1)
 
     # Configure
@@ -116,61 +127,94 @@ def scan(
     if ai_explain and not config.anthropic_api_key:
         click.echo(
             click.style(
-                "Warning: --ai-explain requires ANTHROPIC_API_KEY in .env",
+                "  ⚠ Warning: --ai-explain requires ANTHROPIC_API_KEY in .env. "
+                "AI explanations disabled.",
                 fg="yellow",
             ),
             err=True,
         )
         ai_explain = False
 
-    # Run scan
-    click.echo(f"  Target:  {target_url}")
+    # Display scan configuration
+    click.echo(f"  Target:  {click.style(target_url, fg='cyan', bold=True)}")
     click.echo(f"  Modules: {', '.join(module_list)}")
     click.echo(f"  AI:      {'enabled' if ai_explain else 'disabled'}")
+    click.echo(f"  Report:  {report}")
     click.echo()
 
     scanner = CyberShield(config=config)
 
-    with click.progressbar(
-        length=100,
-        label="  Scanning",
-        bar_template="  %(label)s [%(bar)s] %(info)s",
-        fill_char=click.style("█", fg="cyan"),
-        empty_char="░",
-    ) as bar:
-        bar.update(10)
-        result = scanner.scan(
-            target_url,
-            modules=module_list if "all" not in module_list else None,
-            ai_explain=ai_explain,
+    # Run scan with progress bar
+    try:
+        with click.progressbar(
+            length=100,
+            label="  Scanning",
+            bar_template="  %(label)s [%(bar)s] %(info)s",
+            fill_char=click.style("█", fg="cyan"),
+            empty_char="░",
+        ) as bar:
+            bar.update(10)
+            result = scanner.scan(
+                target_url,
+                modules=module_list if "all" not in module_list else None,
+                ai_explain=ai_explain,
+            )
+            bar.update(90)
+    except Exception as e:
+        click.echo(
+            click.style(f"\n  ✗ Scan failed: {e}", fg="red"), err=True
         )
-        bar.update(90)
+        if "timeout" in str(e).lower() or "connect" in str(e).lower():
+            click.echo(
+                click.style(
+                    "  Hint: The target may be unreachable. Check the URL "
+                    "and your network connection.",
+                    fg="yellow",
+                ),
+                err=True,
+            )
+        sys.exit(1)
 
     click.echo()
 
-    # Display results
-    summary = result.summary
-    click.echo("  ─── Results ───")
+    # Display results header
+    click.echo(click.style("  ─── Results ───", bold=True))
     click.echo(
-        f"  Found {len(result.vulnerabilities)} issue(s) "
-        f"in {result.duration:.1f}s"
+        f"  Found {click.style(str(len(result.vulnerabilities)), bold=True)} "
+        f"issue(s) in {result.duration:.1f}s"
     )
     click.echo()
 
+    # Display severity summary
+    summary = result.summary
     for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
         count = summary[severity]
         if count > 0:
             symbol = SEVERITY_SYMBOLS[severity]
-            click.echo(f"  {symbol} {severity}: {count}")
+            style = SEVERITY_STYLES[severity]
+            click.echo(
+                f"  {symbol} {click.style(f'{severity}: {count}', **style)}"
+            )
 
     click.echo()
 
-    # Show individual findings
+    # Show individual findings with colored output
     for vuln in result.sorted_vulnerabilities():
         symbol = SEVERITY_SYMBOLS[vuln.severity]
-        click.echo(f"  {symbol} [{vuln.severity}] {vuln.title}")
-        click.echo(f"    URL: {vuln.url}")
-        click.echo(f"    {vuln.description[:120]}...")
+        style = SEVERITY_STYLES[vuln.severity]
+
+        click.echo(
+            f"  {symbol} {click.style(f'[{vuln.severity}]', **style)} "
+            f"{vuln.title}"
+        )
+        click.echo(f"    URL: {click.style(vuln.url, fg='cyan')}")
+        click.echo(f"    {vuln.description[:150]}...")
+
+        if vuln.cwe_id:
+            click.echo(
+                f"    CWE: {click.style(vuln.cwe_id, fg='blue')}"
+            )
+
         if vuln.ai_explanation:
             click.echo(
                 click.style("    🤖 AI: ", fg="blue")
@@ -181,10 +225,25 @@ def scan(
 
     # Generate report
     if report != "none":
-        report_path = scanner.generate_report(result, format=report, output_path=output)
-        click.echo(
-            click.style(f"  Report saved: {report_path}", fg="green")
-        )
+        try:
+            report_path = scanner.generate_report(
+                result, format=report, output_path=output
+            )
+            click.echo(
+                click.style(f"  ✓ Report saved: {report_path}", fg="green")
+            )
+        except Exception as e:
+            click.echo(
+                click.style(f"  ✗ Report generation failed: {e}", fg="red"),
+                err=True,
+            )
+
+    # Display scan errors if any
+    if result.errors:
+        click.echo()
+        click.echo(click.style("  ⚠ Scanner Errors:", fg="yellow"))
+        for err in result.errors:
+            click.echo(f"    - {err}")
 
     # Exit with non-zero if critical/high findings
     if summary["CRITICAL"] > 0 or summary["HIGH"] > 0:
@@ -207,16 +266,29 @@ def tutor(topic: str | None):
       cybershield tutor --topic "SQL injection"
     """
     click.echo(click.style(BANNER, fg="cyan"))
-    click.echo("  Security Tutor — Interactive Learning Mode")
+    click.echo(
+        click.style("  Security Tutor", fg="cyan", bold=True)
+        + " — Interactive Learning Mode"
+    )
     click.echo("  Powered by Claude AI")
-    click.echo("  Type 'quit' or 'exit' to leave\n")
+    click.echo(
+        "  Commands: "
+        + click.style("quit", fg="yellow")
+        + " | "
+        + click.style("clear", fg="yellow")
+        + " (reset history) | "
+        + click.style("quiz <topic>", fg="yellow")
+        + " (test yourself)"
+    )
+    click.echo()
 
     config = Config.from_env()
     if not config.anthropic_api_key:
         click.echo(
             click.style(
-                "Error: ANTHROPIC_API_KEY required for Security Tutor. "
-                "Set it in your .env file.",
+                "  ✗ Error: ANTHROPIC_API_KEY required for Security Tutor.\n"
+                "    Set it in your .env file:\n"
+                "    ANTHROPIC_API_KEY=sk-ant-...",
                 fg="red",
             ),
             err=True,
@@ -228,26 +300,84 @@ def tutor(topic: str | None):
     tutor_instance = SecurityTutor(config, topic=topic)
 
     if topic:
-        click.echo(f"  Topic: {topic}\n")
-        # Get initial overview
-        response = asyncio.run(_tutor_ask(tutor_instance, f"Give me an overview of {topic}"))
-        click.echo(f"\n  🤖 {response}\n")
+        click.echo(
+            f"  Topic: {click.style(topic, fg='cyan', bold=True)}\n"
+        )
+        try:
+            response = asyncio.run(
+                _tutor_ask(tutor_instance, f"Give me an overview of {topic}")
+            )
+            click.echo(f"\n  🤖 {response}\n")
+        except Exception as e:
+            click.echo(
+                click.style(f"  ✗ API error: {e}", fg="red"), err=True
+            )
+            if "timeout" in str(e).lower():
+                click.echo(
+                    click.style("  Hint: API request timed out. Try again.", fg="yellow"),
+                    err=True,
+                )
 
     while True:
         try:
             question = click.prompt(
-                click.style("  You", fg="cyan"), prompt_suffix=" > "
+                click.style("  You", fg="cyan", bold=True),
+                prompt_suffix=" > ",
             )
         except (EOFError, KeyboardInterrupt):
-            click.echo("\n  Goodbye!")
+            click.echo("\n  Goodbye! Stay secure. 🛡")
             break
 
         if question.lower() in ("quit", "exit", "q"):
-            click.echo("  Goodbye!")
+            session = tutor_instance.session_info
+            click.echo(
+                f"\n  Session summary: {session.questions_asked} questions asked"
+            )
+            if session.topics_covered:
+                click.echo(
+                    f"  Topics covered: {', '.join(session.topics_covered)}"
+                )
+            click.echo("  Goodbye! Stay secure. 🛡")
             break
 
-        response = asyncio.run(_tutor_ask(tutor_instance, question))
-        click.echo(f"\n  🤖 {response}\n")
+        if question.lower() == "clear":
+            tutor_instance.clear_history()
+            click.echo(
+                click.style("  ✓ Conversation history cleared.\n", fg="green")
+            )
+            continue
+
+        if question.lower().startswith("quiz "):
+            quiz_topic = question[5:].strip()
+            if quiz_topic:
+                click.echo(
+                    click.style(f"\n  📝 Quiz: {quiz_topic}\n", fg="cyan")
+                )
+                try:
+                    quiz = asyncio.run(tutor_instance.quiz(quiz_topic))
+                    click.echo(f"  {quiz}\n")
+                except Exception as e:
+                    click.echo(
+                        click.style(f"  ✗ Quiz failed: {e}", fg="red"),
+                        err=True,
+                    )
+                continue
+
+        try:
+            response = asyncio.run(_tutor_ask(tutor_instance, question))
+            click.echo(f"\n  🤖 {response}\n")
+        except Exception as e:
+            click.echo(
+                click.style(f"  ✗ API error: {e}", fg="red"), err=True
+            )
+            if "timeout" in str(e).lower():
+                click.echo(
+                    click.style(
+                        "  Hint: Request timed out. The API may be busy — try again.",
+                        fg="yellow",
+                    ),
+                    err=True,
+                )
 
 
 async def _tutor_ask(tutor_instance, question: str) -> str:

@@ -4,9 +4,11 @@ CyberShield OSS — AI-Assisted Cybersecurity Scanner & Education Platform.
 An open-source tool that scans web applications for common vulnerabilities
 and uses Claude by Anthropic to generate clear, developer-friendly explanations
 with actionable remediation guidance.
+
+v0.2.0: Interactive Security Tutor, real XSS/SQLi detection, HTML reports.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Minidu Pasan"
 __license__ = "MIT"
 

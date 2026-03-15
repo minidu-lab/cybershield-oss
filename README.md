@@ -251,12 +251,29 @@ mypy cybershield/
 - [x] Claude AI explanation pipeline
 - [x] CLI interface
 - [x] HTML/JSON report generation
-- [ ] Interactive security tutor chat
+- [x] Interactive security tutor chat
 - [ ] Browser extension for real-time scanning
 - [ ] REST API server mode
 - [ ] Docker container support
 - [ ] Plugin system for custom scanners
 - [ ] Dashboard web UI
+
+## Changelog
+
+### v0.2.0 (March 2026)
+- Interactive Security Tutor powered by Claude with multi-turn conversations
+- Real XSS payload injection testing with form field and header scanning
+- Real SQL injection detection (error-based, boolean-based, time-based blind)
+- Professional dark-themed HTML report output with findings table
+- Improved CLI UX with colored severity output
+- Better error handling for API timeouts
+
+### v0.1.0 (March 2026)
+- Initial release with core architecture
+- Claude AI explanation pipeline
+- CLI interface with scan and tutor commands
+- 5 vulnerability scanners (XSS, SQLi, CSRF, Auth, API Keys)
+- HTML and JSON report generation
 
 ## License
 
