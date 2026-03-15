@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cybershield-oss"
+version = "0.1.0"
+description = "AI-Assisted Cybersecurity Scanner & Developer Education Platform"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Minidu Pasan", email = "minidu.website@gmail.com"},
+]
+keywords = ["cybersecurity", "scanner", "vulnerability", "ai", "education", "owasp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Education",
+]
+dependencies = [
+    "aiohttp>=3.9.0",
+    "anthropic>=0.40.0",
+    "click>=8.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "aioresponses>=0.7.0",
+    "flake8>=7.0.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "isort>=5.13.0",
+]
+
+[project.scripts]
+cybershield = "cybershield.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/minidu-lab/cybershield-oss"
+Repository = "https://github.com/minidu-lab/cybershield-oss"
+Issues = "https://github.com/minidu-lab/cybershield-oss/issues"
+
+[tool.setuptools.packages.find]
+include = ["cybershield*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
